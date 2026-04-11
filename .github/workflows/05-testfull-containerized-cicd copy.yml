@@ -1,0 +1,115 @@
+name: 05 testfull Containerized CI/CD Workflow
+
+on:
+  workflow_dispatch:
+
+env:
+  IMAGE_NAME: tiny-health-app
+  ARTIFACT_NAME: tiny-health-app-full-image
+  APP_PORT: "8000"
+
+jobs:
+  # ─── JOB 1: VERIFY ───────────────────────────────────────────
+  verify:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Run tests
+        run: python -m unittest discover -s tests -v
+
+  # ─── JOB 2: BUILD ────────────────────────────────────────────
+  build-container:
+    needs: verify
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    outputs:
+      image_tag: ${{ steps.image-tag.outputs.image_tag }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set image tag
+        id: image-tag
+        run: |
+          TODAY="$(date -u +%Y-%m-%d)"
+          IMAGE_TAG="${TODAY}-${GITHUB_RUN_ID}"
+          echo "image_tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and export Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          build-args: PYTHON_VERSION=${{ matrix.python-version }}
+          tags: |
+            ${{ env.IMAGE_NAME }}-py${{ matrix.python-version }}:${{ steps.image-tag.outputs.image_tag }}
+            ${{ env.IMAGE_NAME }}-py${{ matrix.python-version }}:latest
+          outputs: type=docker,dest=${{ env.IMAGE_NAME }}-py${{ matrix.python-version }}.tar
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_NAME }}-py${{ matrix.python-version }}
+          path: ${{ env.IMAGE_NAME }}-py${{ matrix.python-version }}.tar
+          retention-days: 7
+
+  # ─── JOB 3: DEPLOY ───────────────────────────────────────────
+  deploy-simulated:
+    needs: build-container
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_NAME }}-py${{ matrix.python-version }}
+          path: downloaded-image
+
+      - name: Load Docker image
+        run: docker load --input "downloaded-image/${{ env.IMAGE_NAME }}-py${{ matrix.python-version }}.tar"
+
+      - name: Start container from built image
+        run: |
+          docker run -d \
+            --name tiny-health-container-py${{ matrix.python-version }} \
+            -p "${{ env.APP_PORT }}:${{ env.APP_PORT }}" \
+            "${{ env.IMAGE_NAME }}-py${{ matrix.python-version }}:${{ needs.build-container.outputs.image_tag }}"
+
+      - name: Smoke test containerized app
+        run: |
+          for attempt in 1 2 3 4 5; do
+            if curl --fail --silent "http://127.0.0.1:${{ env.APP_PORT }}/health"; then
+              exit 0
+            fi
+            echo "Waiting for containerized app to become ready..."
+            sleep 2
+          done
+          echo "Containerized app did not become ready in time."
+          exit 1
+
+      - name: Stop container
+        if: always()
+        run: docker rm -f tiny-health-container-py${{ matrix.python-version }} || true
