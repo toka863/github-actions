@@ -15,6 +15,5 @@ jobs:
     steps:
       - name: Check if PR was merged
         run: |
-          if [[ "${{ github.event.pull_request.merged }}" == "true" ]]; then
-            echo "PR was merged into main"
+          if [[ "${{ github.event.pull_request.merged }}" == "true" ]]
           
