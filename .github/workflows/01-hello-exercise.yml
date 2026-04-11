@@ -1,0 +1,22 @@
+name: 01 Hello Exercise
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - closed   # triggers when PR is closed (merged OR just closed)
+  workflow_dispatch:   # manual trigger for testing
+
+jobs:
+  check-pr:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check if PR was merged
+        run: |
+          if [[ "${{ github.event.pull_request.merged }}" == "true" ]]; then
+            echo "✅ PR was merged into main"
+          else
+            echo "❌ PR was closed WITHOUT merging"
+          fi
