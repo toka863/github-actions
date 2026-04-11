@@ -28,6 +28,26 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Verify repository files
+        run: |
+          echo "Current directory:"
+          pwd
+          echo "Listing files:"
+          ls -la
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      # Check Python installation and version
+      - name: Verify Python installation
+        run: |
+          echo "Python path:"
+          which python
+          echo "Python version:"
+          python --version
+
       - name: Run tests
         # This is the key verification step in the CI workflow.
         run: python -m unittest discover -s tests -v
