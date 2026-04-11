@@ -17,6 +17,4 @@ jobs:
         run: |
           if [[ "${{ github.event.pull_request.merged }}" == "true" ]]; then
             echo "PR was merged into main"
-          else
-            echo "PR was closed WITHOUT merging"
-          fi
+          
