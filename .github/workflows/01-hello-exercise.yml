@@ -5,8 +5,8 @@ on:
     branches:
       - main
     types:
-      - closed   # triggers when PR is closed (merged OR just closed)
-  workflow_dispatch:   # manual trigger for testing
+      - closed
+  workflow_dispatch:
 
 jobs:
   check-pr:
@@ -15,5 +15,8 @@ jobs:
     steps:
       - name: Check if PR was merged
         run: |
-          if [[ "${{ github.event.pull_request.merged }}" == "true" ]]
-          
+          if [[ "${{ github.event.pull_request.merged }}" == "true" ]]; then
+            echo "PR was merged into main"
+          else
+            echo "PR was closed WITHOUT merging"
+          fi
