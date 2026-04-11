@@ -1,0 +1,75 @@
+name: 04 CI Then Build Artifact
+
+on:
+  workflow_dispatch:
+
+env:
+  IMAGE_NAME: tiny-health-app
+  IMAGE_TAR: tiny-health-app.tar
+  ARTIFACT_NAME: tiny-health-app-image
+
+jobs:
+  # ─── JOB 1: CI ───────────────────────────────────────────────
+  ci:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Verify Python version
+        run: python --version
+
+      - name: Run tests
+        run: python -m unittest discover -s tests -v
+
+  # ─── JOB 2: BUILD ────────────────────────────────────────────
+  build-package:
+    runs-on: ubuntu-latest
+    needs: ci                          # waits for ALL ci matrix jobs to pass
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set image tag
+        id: image-tag
+        run: |
+          TODAY="$(date -u +%Y-%m-%d)"
+          IMAGE_TAG="${TODAY}-${GITHUB_RUN_ID}"
+          echo "image_tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and export Docker image
+        # Each matrix leg uses its matching Python base image.
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          build-args: PYTHON_VERSION=${{ matrix.python-version }}
+          tags: ${{ env.IMAGE_NAME }}-${{ matrix.python-version }}:${{ steps.image-tag.outputs.image_tag }}
+          outputs: type=docker,dest=${{ env.IMAGE_NAME }}-${{ matrix.python-version }}.tar
+
+      - name: Upload build artifact
+        # Artifact name includes the Python version to stay unique per matrix leg.
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_NAME }}-py${{ matrix.python-version }}
+          path: ${{ env.IMAGE_NAME }}-${{ matrix.python-version }}.tar
+          retention-days: 7
